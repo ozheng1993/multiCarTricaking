@@ -13,7 +13,7 @@
 #include "opencv2/core.hpp"
 #include "opencv2/opencv.hpp"
 #include "opencv2/video/background_segm.hpp"
-
+#include <math.h>       /* pow */
 //C
 #include <stdio.h>
 //C++
@@ -37,11 +37,13 @@ Mat frKeypoints;
 Mat frFinal;
 Mat frFore;
 Mat frBack;
-
+Mat Roi;
+bool startTrack;
 int frameSkip=2;
+int restartCounter=0;
 int keyboard; //input from keyboard
 Ptr<BackgroundSubtractorMOG2> pMOG2; //MOG2 Background subtractor
-
+int newcarcounter=0;
 
 //static void refineSegments(const Mat& img, Mat& mask, Mat& dst)
 //{
@@ -99,15 +101,15 @@ int main( int argc, char** argv ){
    //MOG2 approach
     pMOG2 = createBackgroundSubtractorMOG2();
     pMOG2->setDetectShadows(true);
-    pMOG2->setHistory(10);
-    pMOG2->setNMixtures(3);
-    pMOG2->setBackgroundRatio(100);
-    pMOG2->setShadowThreshold(100);
+    pMOG2->setHistory(100);
+    pMOG2->setNMixtures(5);
+    pMOG2->setBackgroundRatio(0.7);
+    pMOG2->setShadowThreshold(120);
     pMOG2->setShadowValue(0);
     // set input video
     std::string video = argv[1];
     VideoCapture cap(video);
-//speed var
+    //speed var
     vector<double> preX;
     vector<double> preY;
     vector<double> lastX;
@@ -115,37 +117,13 @@ int main( int argc, char** argv ){
     vector<double> speed;
     vector<double> speedX;
     vector<double> speedY;
-    vector<Rect> boundRect2(999);
+    vector<double> speedCounter;
+    vector<double> speedPreAvg;
+    vector<double> speedAvg;
+    vector<Rect> boundRect2;
     // container of the tracked objects
     vector<Rect2d> objects;
     std::vector<Ptr<Tracker> > algorithms;
-    
-    
-    
-    ///
-    // //Setup SimpleBlobDetector parameters.
-    SimpleBlobDetector::Params params;
-    
-    // Change thresholds
-    params.minThreshold = 100;
-    params.maxThreshold = 256;
-    
-    // Filter by Area.
-    params.filterByArea = true;
-    params.minArea = 300;
-    
-    // Filter by Circularity
-    params.filterByCircularity = true;
-    params.minCircularity = 0.1;
-    
-    // Filter by Convexity
-    params.filterByConvexity = true;
-    params.minConvexity = 0.87;
-    
-    // Filter by Inertia
-    params.filterByInertia = true;
-    params.minInertiaRatio = 0.01;
-    
     
     // Storage for blobs
     vector<KeyPoint> keypoints;
@@ -178,63 +156,42 @@ int main( int argc, char** argv ){
 //        {
             string display1= "car detection init... car count: "+to_string(size);
             putText(frame, display1.c_str(), cv::Point(155, 15),FONT_HERSHEY_SIMPLEX, 0.5 , cv::Scalar(255,0,0));
-            Rect Rec(400, 900, 3000, 780);
-            rectangle(frame, Rec, Scalar(255), 10, 8, 0);
+           // Rect Rec(400, 900, 3000, 780);
+           // rectangle(frame, Rec, Scalar(255), 10, 8, 0);
             //Select area described by REC and result write to the Roi
-            Mat Roi = frame(Rec);
-            resize(Roi, Roi, cv::Size(), 0.5, 0.5);
+//            Mat Roi = frame(Rec);
+        
+        //Roi =frame;
+            resize(frame, Roi, cv::Size(), 0.3,0.3);
             //update the background model
             cvtColor(Roi, frameMat, CV_BGR2GRAY);
             pMOG2->apply(Roi, fgMaskMOG2,-1);
-        //            //blur method
-        Mat open =Mat::ones(Size(15,6),CV_8U);
-        Mat close =Mat::ones(Size(16,6),CV_8U);
-        erode(fgMaskMOG2,frEroded,cv::Mat(),cv::Point(-1,-1),2);
-        
-     //   dilate(frEroded,frClose,cv::Mat(),cv::Point(-1,-1),3);
-        
-        
-        
-//        morphologyEx( frEroded, frOpen, MORPH_OPEN, open );
-        morphologyEx( frEroded, frDil, MORPH_DILATE, close );
-        //        morphologyEx( frEroded, frOpen, MORPH_OPEN, open );
-        morphologyEx( frDil, frClose, MORPH_CLOSE, open );
-       // GaussianBlur( frClose, frBlur, Size( 5, 5 ), 0, 0 );
-        
-        
-        
-        
-        
-        
-        
-        
-    
-//        //            //blur method
-//        Mat open =Mat::ones(Size(6,6),CV_8U);
-//        Mat close =Mat::ones(Size(6,6),CV_8U);
-//        morphologyEx( frTh, frOpen, MORPH_OPEN, open );
-//        morphologyEx( frOpen, frClose, MORPH_DILATE, close );
-        
-            /// Apply the specified morphology operation 0= opening 1=closing
-      
-        
-       
-//            morphologyEx( frOpen, frClose, MORPH_CLOSE, open );
-       //  morphologyEx( frOpen, frFinal, MORPH_DILATE, open );
-       // imshow("back", frBack);
-  
-//            morphologyEx( frOpen, frClose, 1, close );
-//            morphologyEx( frOpen, frClose, 3, close );
-         Canny( frClose, frFinal, 200, 300, 3 );
-        
-    
-//
-        //for find contours
-        vector<vector<Point> > contours;
-        vector<Vec4i> hierarchy;
-            /// Find contours
-        findContours( frFinal, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE );
 
+        //blur method
+        Mat open =Mat::ones(Size(8,8),CV_8U);
+        Mat close =Mat::ones(Size(5,5),CV_8U);
+        
+        //morphologyEx( frEroded, frDil, MORPH_DILATE, close );
+        //        morphologyEx( frEroded, frOpen, MORPH_OPEN, open );
+        morphologyEx( fgMaskMOG2, frOpen, MORPH_OPEN, open );
+        morphologyEx( frOpen, frClose, MORPH_CLOSE, close );
+        //erode(fgMaskMOG2,frEroded,cv::Mat(),Point(-1, -1), 1.2);
+        GaussianBlur( frClose, frBlur, Size(5, 5), 5, 5);
+        
+        //threshold(frBlur,frTh, 120,255.0, CV_THRESH_BINARY|THRESH_OTSU);
+       
+        if(stoi(frameNumberString)>60)
+        {
+            if(restartCounter>600)
+            {
+                startTrack=false;
+            }
+           
+            //for find contours
+            vector<vector<Point> > contours;
+            vector<Vec4i> hierarchy;
+            /// Find contours
+            findContours( frBlur, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0) );
             /// Approximate contours to polygons + get bounding rects and circles
             vector<vector<Point> > contours_poly( contours.size() );
             vector<Rect> boundRect( contours.size() );
@@ -242,39 +199,28 @@ int main( int argc, char** argv ){
             vector<float>radius( contours.size() );
             for( int i = 0; i < contours.size(); i++ )
             {
-
                 approxPolyDP( Mat(contours[i]), contours_poly[i], 3, true );
                 boundRect[i] = boundingRect( Mat(contours_poly[i]) );
-               // boundRect2[i] = boundingRect( Mat(contours_poly[i]) );
+                boundRect[i].width+=20;
+                boundRect[i].height+=20;
+                boundRect[i].x-=10;
+                boundRect[i].y-=10;
+                // boundRect2[i] = boundingRect( Mat(contours_poly[i]) );
                 minEnclosingCircle( (Mat)contours_poly[i], center[i], radius[i] );
-
             }
             /// Draw polygonal contour + bonding rects + circles
             Mat drawing = Mat::zeros( frClose.size(), CV_8UC3 );
             for( int i = 0; i< contours.size(); i++ )
             {
-                if(contourArea(contours[i]) >200)
-                {
-                string carDinit = "car found : "+to_string(i);
-                drawContours( Roi, contours_poly, i, Scalar(255,0,0), 1, 8, vector<Vec4i>(), 0, Point() );
-                rectangle( Roi, boundRect[i].tl(), boundRect[i].br(),Scalar(255,0,0), 2, 8, 0 );
-               // rectangle( frEdge, boundRect[i].tl(), boundRect[i].br(),Scalar(255,0,0), 2, 8, 0 );
-                putText(Roi,carDinit, boundRect[i].tl(),FONT_HERSHEY_SIMPLEX,1 , cv::Scalar(255,0,0));
-                    //putText(frEdge,carDinit, boundRect[i].tl(),FONT_HERSHEY_SIMPLEX,1.5 , cv::Scalar(255,0,0));
-
-//                size=i;
-//                boundRect2[i]=boundRect[i];
-//                }
-         }
-        }
-//        else if(stoi(frameNumberString)==60)
-//        {
-//            string display2= "car tracking init... car count: "+to_string(size);
-//            putText(frame, display2.c_str(), cv::Point(155, 15),
-//                    FONT_HERSHEY_SIMPLEX, 0.5 , cv::Scalar(255,0,0));
-//            cout<<"<<<<<<<<<<start<<<<<<<<<<<<<<"<<endl;
-//            for( int i = 0; i<size; i++ )
-//            {
+                // string carDinit = "CD init Dfor car: "+to_string(i);
+                drawContours( Roi, contours_poly, i, Scalar(255,0,255), 0.5, 8, vector<Vec4i>(), 0, Point() );
+                //rectangle( Roi, boundRect[i].tl(), boundRect[i].br(),Scalar(255,255,0), 0.5, 8, 0);
+                //drawContours( frameCopy, contours_poly, i, Scalar(0,0,255), 1, 8, vector<Vec4i>(), 0, Point() );
+                //rectangle( Roi, boundRect[i].tl(), boundRect[i].br(),Scalar(255,255,0), 0.5, 8, 0);
+                //putText(frClose,carDinit, boundRect[i].tl(),FONT_HERSHEY_SIMPLEX, 0.25 , cv::Scalar(255,0,0));
+                size=i;
+                boundRect2.push_back(boundRect[i]);
+                //rectangle( Roi, boundRect2[i].tl(), boundRect2[i].br(),Scalar(255,0,0), 0.5, 8, 0);
 //                preX.push_back(0);
 //                preY.push_back(0);
 //                lastX.push_back(0);
@@ -282,65 +228,226 @@ int main( int argc, char** argv ){
 //                speed.push_back(0);
 //                speedX.push_back(0);
 //                speedY.push_back(0);
-//                algorithms.push_back(TrackerKCF::create());
-//                objects.push_back(boundRect2[i]);
-//            }
-//            trackers.add(algorithms,frame,objects);
-//            cout<<"<<<<<<<<<<<<<<finsih<<<<<<<<<"<<endl;
+//                speedCounter.push_back(0);
+//                speedAvg.push_back(0);
+//                speedPreAvg.push_back(0);
+                //cout<<"w:"<<boundRect[i].width<<"h:"<<boundRect[i].height<<endl;
+            }
+            if(startTrack==false)
+            {
+//                cout<<"start track"<<boundRect2.size()<<endl;
+//                for( int i = 0; i< contours.size(); i++ )
+//                {
+//                    //cout<<"rect vilda: "<<i<<"x"<<boundRect2[i].x<<"y"<<boundRect2[i].y<<endl;
+//
+//                }
+//
+//
+//                //                string display2= "car tracking init... car count: "+to_string(size);
+//                //                putText(frame, display2.c_str(), cv::Point(155, 15),
+//                //                        FONT_HERSHEY_SIMPLEX, 0.5 , cv::Scalar(255,0,0));
+//                //                cout<<"<<<<<<<<<<start<<<<<<<<<<<<<<"<<endl;
+                 //cout<<"object size brfore"<<trackers.getObjects().size()<<endl;
+                for( int i = 0; i<boundRect2.size(); i++ )
+                {
+                    preX.push_back(0);
+                    preY.push_back(0);
+                    lastX.push_back(0);
+                    lastY.push_back(0);
+                    speed.push_back(0);
+                    speedX.push_back(0);
+                    speedY.push_back(0);
+                    speedCounter.push_back(0);
+                    speedAvg.push_back(0);
+                    speedPreAvg.push_back(0);
+                    algorithms.push_back(TrackerKCF::create());
+                    objects.push_back(boundRect2[i]);
+                   // cout<<"object "<<i<<"x"<<objects[i].x<<"y"<<objects[i].y<<endl;
+                    //cout<<i<<endl;
+                }
+                
+                
+                trackers.add(algorithms,Roi,objects);
+                
+                
+                
+               // cout<<"object size after"<<trackers.getObjects().size()<<endl;
+                
+//                for(unsigned i=0;i<trackers.getObjects().size();i++)
+//                {
+//                    cout<<"taracker vilda "<<i<<"x"<<trackers.getObjects()[i].x<<"y"<<trackers.getObjects()[i].y<<endl;
+//                }
+                  startTrack=true;
+            }
+            
+            if(boundRect2.size()>contours.size())
+            {
+                boundRect2.clear();
+            }
+            
+            if(startTrack==true)
+            {
+                vector<Rect2d> objectsNew;
+                vector<Ptr<Tracker> > algorithmsNew;
+                vector<bool> newCar(boundRect2.size());
+                //vector<double> dist(trackers.getObjects().size());
+                for( int i = 0; i<boundRect2.size(); i++ )
+                {
+                    int temx= boundRect2[i].x;
+                    int temy= boundRect2[i].y;
+                    
+                    newCar[i]=true;
+                    for(int j=0;j<trackers.getObjects().size();j++)
+                    {
+                        int dist=0;
+                        dist=sqrt ((trackers.getObjects()[j].x-temx)*(trackers.getObjects()[j].x-temx)+(trackers.getObjects()[j].y-temy)*(trackers.getObjects()[j].y-temy));
+                        //cout<<"object: "<<i<<"tacker:"<<j<<"dist check "<<dist<<endl;
+                        if(dist<30)
+                        {
+                            //cout<<"object: "<<i<<"tacker:"<<j<<"too close"<<endl;
+                            newCar[i]=false;
+                            
+//                            preX.push_back(0);
+//                            preY.push_back(0);
+//                            lastX.push_back(0);
+//                            lastY.push_back(0);
+//                            speed.push_back(0);
+//                            speedX.push_back(0);
+//                            speedY.push_back(0);
+//                            speedCounter.push_back(0);
+//                            speedAvg.push_back(0);
+//                            speedPreAvg.push_back(0);
+//                            algorithms.push_back(TrackerKCF::create());
+//                            objects.push_back(boundRect2[i]);
+                        }
+//                        else
+//                        {
+//                            cout<<"object: "<<i<<"tacker:"<<j<<"too close"<<endl;
+//                        }
+                    }
+                    
+                    if(newCar[i]==true)
+                    {
+                        cout<<"new car found: "<<i<<endl;
+                        newcarcounter++;
+                        rectangle( Roi, boundRect2[i], Scalar( 0, 255, 255 ), 0.5, 1 );
+                        preX.push_back(0);
+                                                    preY.push_back(0);
+                                                    lastX.push_back(0);
+                                                    lastY.push_back(0);
+                                                    speed.push_back(0);
+                                                    speedX.push_back(0);
+                                                    speedY.push_back(0);
+                                                    speedCounter.push_back(0);
+                                                    speedAvg.push_back(0);
+                                                    speedPreAvg.push_back(0);
+                                                    algorithmsNew.push_back(TrackerKCF::create());
+                                                    objectsNew.push_back(boundRect2[i]);
+                        trackers.add(TrackerKCF::create(),Roi,boundRect2[i]);
+                        
+                    }
+                   
+                }
+                cout<<"total added car"<<newcarcounter<<endl;
+                //trackers.add(algorithmsNew,Roi,objectsNew);
+                objectsNew.clear();
+                algorithmsNew.clear();
+                
+               
+            }
+            
+            
+            //cout<<boundRect2.size()<<endl;
+////               // cvtColor(frClose, frClose, CV_GRAY2RGB);
+////
+////
+//////            }
+////
+////
+////
+////
+//////            else if(startTrack==true)
+//////            {
+////                //restartCounter++;
+////              //  cvtColor(frClose, frClose, CV_GRAY2RGB);
+////
+                    trackers.update(Roi);
+////                // draw the tracked object
+                for(int i=0;i<trackers.getObjects().size();i++)
+                {
+                    if(lastX[i]==0&&lastY[i]==0)
+                    {
+                       // cout<<"first time : "<<i<<endl;
+                        lastX[i]=trackers.getObjects()[i].x;
+                        lastY[i]=trackers.getObjects()[i].y;
+                        speed[i]=0;
+                    }
+                    else
+                    {
+
+
+                        speedCounter[i]+=1;
+                        preX[i]=trackers.getObjects()[i].x;
+                        preY[i]=trackers.getObjects()[i].y;
+                        speedX[i]=(preX[i]-lastX[i]);
+                        speedY[i]=(preY[i]-lastY[i]);
+                        lastX[i]=preX[i];
+                        lastY[i]= preY[i];
+                        speed[i]=(sqrt(speedX[i]*speedX[i]+speedY[i]*speedY[i]))/1980*220*stoi(fpsNumberString);
+                        speedPreAvg[i]+=speed[i];
+                        speedAvg[i]=speedPreAvg[i]/ speedCounter[i];
+                    }
+                    
+                    if(speed[i]!=0)
+                    {
+                    
+                        string location="X: "+to_string((int)lastX[i])+" Y: "+to_string((int)lastY[i]);
+                        string speed="car:"+to_string(i)+"speed:"+to_string((int)speedAvg[i])+"m/s";
+                        rectangle( Roi, trackers.getObjects()[i], Scalar( 0, 255, 0 ), 0.25, 1 );
+                        cv::putText(Roi,speed,
+                                    cv::Point(trackers.getObjects()[i].x+10,trackers.getObjects()[i].y-10), // Coordinates
+                                    cv::FONT_HERSHEY_COMPLEX_SMALL, // Font
+                                    0.5, // Scale. 2.0 = 2x bigger
+                                    cv::Scalar(255,0,0), // Color
+                                    1); // Anti-alias // show image with the tracked object
+
+                        cv::putText(Roi,location,
+                                    cv::Point(trackers.getObjects()[i].x+10,trackers.getObjects()[i].y), // Coordinates
+                                    cv::FONT_HERSHEY_COMPLEX_SMALL, // Font
+                                    0.5, // Scale. 2.0 = 2x bigger
+                                    cv::Scalar(255,0,0), // Color
+                                    1); // Anti-alias // show image with the tracked object
+                    }
+                    //rectangle( Roi, trackers.getObjects()[i], Scalar( 0, 255, 0 ), 0.25, 1 );
+                    //cout<<"tracker: "<<i<<"x:"<<trackers.getObjects()[i].x<<i<<"y:"<<trackers.getObjects()[i].y<<endl;
+                }
+
+////
+////                    for(unsigned j=0;j<trackers.getObjects().size();i++)
+////                    {
+////                        int x1=trackers.getObjects()[i].x;
+////                        int y1=trackers.getObjects()[i].y;
+////                        int x2=trackers.getObjects()[j].x;
+////                        int y2=trackers.getObjects()[j].y;
+////                        int dist=
+////
+////                    }
+//
+//
+//
+
+//                }
+            }
 //        }
-//        else{
-//            string display2= "car tracking started!! car count: "+to_string(size);
-//            putText(frame, display2.c_str(), cv::Point(155, 15),
-//                    FONT_HERSHEY_SIMPLEX, 0.5 , cv::Scalar(255,0,0));
-//            trackers.update(frame);
-//            // draw the tracked object
-//            for(unsigned i=0;i<trackers.getObjects().size();i++)
-//            {
-//                rectangle( frame, trackers.getObjects()[i], Scalar( 0, 255, 0 ), 2, 1 );
-//                preX[i]=trackers.getObjects()[i].x;
-//                preY[i]=trackers.getObjects()[i].y;
-//                speedX[i]=(preX[i]-lastX[i])*420/1980;
-//                speedY[i]=(preY[i]-lastY[i])*420/1980;
-//                speed[i]=sqrt(speedX[i]*speedX[i]+speedY[i]*speedY[i])*stoi(fpsNumberString)/frameSkip;
-//                lastX[i]=preX[i];
-//                lastY[i]=preY[i];
-//                string location="car: "+to_string(i)+" | "+to_string(speed[i])+" m/s";
-//                rectangle( frame, trackers.getObjects()[i], Scalar( 0, 255, 0 ), 2, 1 );
-//                cv::putText(frame,
-//                            location,
-//                            cv::Point(trackers.getObjects()[i].x+10,trackers.getObjects()[i].y), // Coordinates
-//                            cv::FONT_HERSHEY_COMPLEX_SMALL, // Font
-//                            0.7, // Scale. 2.0 = 2x bigger
-//                            cv::Scalar(255,0,0), // Color
-//                            1); // Anti-alias // show image with the tracked object
-//            }
         
-//        }
-        //update the tracking result
-        
-//        Rect WhereRec(0, 0, Roi.cols, Roi.rows);
-//        // This copy Roi Image into loaded on position Where rec
-//        Roi.copyTo(frame(WhereRec));
-//        //resize window
-       
-//        resize(frTh, frTh, cv::Size(), 0.5, 0.5);
-////        resize(frameMat, frameMat, cv::Size(),  0.15, 0.15);
-//       resize(frEdge, frEdge, cv::Size(),  0.5, 0.5);
-//     resize(fgMaskMOG2, fgMaskMOG2, cv::Size(), 0.5, 0.5);
-//       resize(frOpen, frOpen, cv::Size(), 0.5, 0.5);
-//        resize(frClose, frClose, cv::Size(),  0.5, 0.5);
-//        resize(imgResult, imgResult, cv::Size(),  0.5, 0.5);
-//        resize(frBlur, frBlur, cv::Size(), 0.3, 0.3);
-//        // resize(frKeypoints, frKeypoints, cv::Size(), 0.5, 0.5);
-////        //show the current frame and the fg masks
-       imshow("Frame", Roi);
+        imshow("Frame", Roi);
 //////       // imshow("Framemat", frameMat);
-//imshow("background", fgMaskMOG2);
+ //imshow("background", fgMaskMOG2);
 //////          imshow("sharp", imgResult);
-////imshow("threshold", frTh);
+  // imshow("threshold", frTh);
 //         imshow("erded", frEroded);
-////        imshow("open", frOpen);
-// imshow("close", frClose);
+//  imshow("open", frOpen);
+//  imshow("close", frClose);
 //  imshow("final", frFinal);
 //  imshow("blur", frBlur);
 //        imshow("edge", frEdge);
@@ -351,7 +458,7 @@ int main( int argc, char** argv ){
 ////        //second line
 //        moveWindow("threshold",0,350);
 //        moveWindow("background",550,350);
-    //  moveWindow("close",0,500);
+        moveWindow("close",0,500);
 //
 //        moveWindow("blur",0,700);
  // moveWindow("keypoints",0,750);
